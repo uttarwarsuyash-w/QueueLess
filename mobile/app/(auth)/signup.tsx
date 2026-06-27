@@ -23,17 +23,32 @@ export default function Signup() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
 
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       Alert.alert("Signup Failed", error.message);
       return;
     }
+
+    // Create profile in database
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .insert({
+          id: data.user.id,
+          email: data.user.email,
+        });
+
+      if (profileError) {
+        console.log(profileError);
+      }
+    }
+
+    setLoading(false);
 
     Alert.alert("Success", "Account created successfully!");
     router.replace("/(auth)/login");
