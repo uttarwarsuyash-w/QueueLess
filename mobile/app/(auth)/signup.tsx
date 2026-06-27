@@ -17,13 +17,16 @@ export default function Signup() {
 
   async function handleSignup() {
     if (!email || !password) {
-      Alert.alert("Error", "Enter email and password");
+      Alert.alert("Error", "Please enter email and password.");
       return;
     }
 
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.signUp({
       email,
       password,
     });
@@ -34,17 +37,19 @@ export default function Signup() {
       return;
     }
 
-    // Create profile in database
-    if (data.user) {
+    if (user) {
       const { error: profileError } = await supabase
         .from("profiles")
         .insert({
-          id: data.user.id,
-          email: data.user.email,
+          id: user.id,
+          full_name: "",
+          email: user.email,
+          phone: "",
+          role: "user",
         });
 
       if (profileError) {
-        console.log(profileError);
+        console.log("Profile Error:", profileError.message);
       }
     }
 
