@@ -21,7 +21,7 @@ export default function CreateQueue() {
 
     setLoading(true);
 
-    // Get logged-in user
+    // Get logged in user
     const {
       data: { user },
       error: userError,
@@ -29,7 +29,7 @@ export default function CreateQueue() {
 
     if (userError) {
       setLoading(false);
-      console.log("User Error:", userError);
+      console.log("USER ERROR:", userError);
       Alert.alert("Error", userError.message);
       return;
     }
@@ -41,6 +41,15 @@ export default function CreateQueue() {
     }
 
     console.log("Logged in User ID:", user.id);
+
+    // Check profile exists
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id);
+
+    console.log("PROFILE DATA:", profile);
+    console.log("PROFILE ERROR:", profileError);
 
     // Insert queue
     const { data, error } = await supabase

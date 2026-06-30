@@ -1,12 +1,51 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { useEffect, useState } from "react";
+import { router } from "expo-router";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import SearchBar from "@/components/ui/SearchBar";
-import QueueCard from "@/components/ui/QueueCard";
 import CategoryCard from "@/components/ui/CategoryCard";
 import { Colors } from "@/constants/colors";
+import { supabase } from "@/lib/supabase";
+
+type Queue = {
+  id: string;
+  name: string;
+  category: string;
+  location: string;
+  current_token: number;
+  total_people: number;
+};
 
 export default function HomeScreen() {
+  const [queues, setQueues] = useState<Queue[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchQueues();
+  }, []);
+
+  async function fetchQueues() {
+    const { data, error } = await supabase
+      .from("queues")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.log(error);
+    } else {
+      setQueues(data || []);
+    }
+
+    setLoading(false);
+  }
+
   return (
     <ScrollView
       style={styles.container}
@@ -23,7 +62,7 @@ export default function HomeScreen() {
 
       <SearchBar />
 
-      <Text style={styles.heading}>Nearby Queues</Text>
+      <Text style={styles.heading}>Categories</Text>
 
       <View style={styles.grid}>
         <CategoryCard icon="medical" title="Hospital" />
@@ -32,7 +71,43 @@ export default function HomeScreen() {
         <CategoryCard icon="school" title="College" />
       </View>
 
-      <QueueCard />
+      <Text style={styles.heading}>Available Queues</Text>
+
+      {loading ? (
+        <Text>Loading...</Text>
+      ) : queues.length === 0 ? (
+        <Text>No queues available.</Text>
+      ) : (
+        queues.map((queue) => (
+          <TouchableOpacity
+            key={queue.id}
+            style={styles.queueCard}
+            onPress={() => router.push(`/queue/${queue.id}`)}
+          >
+            <Text style={styles.queueName}>{queue.name}</Text>
+
+            <Text style={styles.queueInfo}>
+              📍 {queue.location}
+            </Text>
+
+            <Text style={styles.queueInfo}>
+              Category: {queue.category}
+            </Text>
+
+            <Text style={styles.queueInfo}>
+              Current Token: {queue.current_token}
+            </Text>
+
+            <Text style={styles.queueInfo}>
+              People in Queue: {queue.total_people}
+            </Text>
+
+            <Text style={styles.tapText}>
+              Tap to view details →
+            </Text>
+          </TouchableOpacity>
+        ))
+      )}
 
       <TouchableOpacity style={styles.button}>
         <Ionicons name="add-circle-outline" size={22} color="white" />
@@ -80,13 +155,40 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.text,
     marginBottom: 18,
-    marginTop: 10,
+    marginTop: 20,
   },
 
   grid: {
     flexDirection: "row",
     justifyContent: "space-between",
     flexWrap: "wrap",
+    marginBottom: 20,
+  },
+
+  queueCard: {
+    backgroundColor: "#fff",
+    borderRadius: 15,
+    padding: 18,
+    marginBottom: 15,
+    elevation: 3,
+  },
+
+  queueName: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+
+  queueInfo: {
+    fontSize: 15,
+    marginBottom: 4,
+    color: "#555",
+  },
+
+  tapText: {
+    marginTop: 10,
+    color: Colors.primary,
+    fontWeight: "700",
   },
 
   button: {
