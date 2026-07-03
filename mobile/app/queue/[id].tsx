@@ -20,8 +20,45 @@ export default function QueueDetails() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
-  }, []);
+  loadData();
+
+  const queueChannel = supabase
+    .channel(`queue-${id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "queues",
+        filter: `id=eq.${id}`,
+      },
+      () => {
+        loadData();
+      }
+    )
+    .subscribe();
+
+  const memberChannel = supabase
+    .channel(`members-${id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "queue_members",
+        filter: `queue_id=eq.${id}`,
+      },
+      () => {
+        loadData();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(queueChannel);
+    supabase.removeChannel(memberChannel);
+  };
+}, []);
 
   async function loadData() {
     await fetchQueue();
@@ -106,12 +143,20 @@ export default function QueueDetails() {
       return;
     }
 
-    await supabase
-      .from("queues")
-      .update({
-        total_people: nextToken,
-      })
-      .eq("id", id);
+    const { count: memberCount } = await supabase
+  .from("queue_members")
+  .select("*", {
+    count: "exact",
+    head: true,
+  })
+  .eq("queue_id", id);
+
+await supabase
+  .from("queues")
+  .update({
+    total_people: memberCount ?? 0,
+  })
+  .eq("id", id);
 
     Alert.alert(
       "Joined Successfully",
@@ -120,69 +165,83 @@ export default function QueueDetails() {
 
     await loadData();
   }
-    async function nextToken() {
-    if (!isOwner) return;
+  async function nextToken() {
+  if (!isOwner) return;
 
-    const next = queue.current_token + 1;
+  const { data: latestQueue } = await supabase
+    .from("queues")
+    .select("*")
+    .eq("id", id)
+    .single();
 
-    const { error } = await supabase
-      .from("queues")
-      .update({
-        current_token: next,
-      })
-      .eq("id", id);
+  if (!latestQueue) return;
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
+  const next = latestQueue.current_token + 1;
 
-    await supabase
-      .from("queue_members")
-      .update({
-        status: "completed",
-      })
-      .eq("queue_id", id)
-      .eq("token_number", next);
+  await supabase
+    .from("queues")
+    .update({
+      current_token: next,
+    })
+    .eq("id", id);
 
-    Alert.alert("Success", `Now Serving Token ${next}`);
+  await supabase
+  .from("queue_members")
+  .update({ status: "completed" })
+  .eq("queue_id", id)
+  .lt("token_number", next);
 
-    await loadData();
-  }
+await supabase
+  .from("queue_members")
+  .update({ status: "serving" })
+  .eq("queue_id", id)
+  .eq("token_number", next);
 
-  async function resetQueue() {
-    Alert.alert(
-      "Reset Queue",
-      "Are you sure you want to reset this queue?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          style: "destructive",
-          onPress: async () => {
-            await supabase
-              .from("queue_members")
-              .delete()
-              .eq("queue_id", id);
+await supabase
+  .from("queue_members")
+  .update({ status: "waiting" })
+  .eq("queue_id", id)
+  .gt("token_number", next);
 
-            await supabase
-              .from("queues")
-              .update({
-                current_token: 0,
-                total_people: 0,
-              })
-              .eq("id", id);
+  await loadData();
 
-            setMyEntry(null);
+  Alert.alert(`Now Serving Token ${next}`);
+}
+    
 
-            Alert.alert("Queue Reset Successfully");
+async function resetQueue() {
+  Alert.alert(
+    "Reset Queue",
+    "Are you sure you want to reset this queue?",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Reset",
+        style: "destructive",
+        onPress: async () => {
+          await supabase
+            .from("queue_members")
+            .delete()
+            .eq("queue_id", id);
 
-            await loadData();
-          },
+          await supabase
+            .from("queues")
+            .update({
+              current_token: 0,
+              total_people: 0,
+            })
+            .eq("id", id);
+
+          setMyEntry(null);
+
+          await loadData();
+
+          Alert.alert("Queue Reset Successfully");
         },
-      ]
-    );
-  }
+      },
+    ]
+  );
+}
 
   async function deleteQueue() {
     Alert.alert(
@@ -211,7 +270,7 @@ export default function QueueDetails() {
 
             Alert.alert("Queue Deleted");
 
-            router.back();
+           router.replace("/(tabs)");
           },
         },
       ]
@@ -274,15 +333,15 @@ export default function QueueDetails() {
           </Text>
 
           <Text style={styles.statusText}>
-            Status :
-            {" "}
-            {myEntry.token_number === queue.current_token + 1
-              ? "🟢 Your Turn Next"
-              : myEntry.status === "completed"
-              ? "✅ Completed"
-              : "🟡 Waiting"}
-          </Text>
-
+  Status:{" "}
+  {myEntry.status === "completed"
+    ? "✅ Completed"
+    : myEntry.status === "serving"
+    ? "🔵 It's Your Turn!"
+    : myEntry.token_number === queue.current_token + 1
+    ? "🟢 Your Turn Next"
+    : "🟡 Waiting"}
+</Text>
           <Text style={styles.statusText}>
             People Ahead :
             {" "}
@@ -304,20 +363,11 @@ export default function QueueDetails() {
           },
         ]}
         onPress={joinQueue}
-        disabled={
-          !!myEntry ||
-          queue.current_token >=
-            queue.total_people
-        }
+        disabled={!!myEntry}
       >
-        <Text style={styles.buttonText}>
-          {myEntry
-            ? "✓ Already Joined"
-            : queue.current_token >=
-              queue.total_people
-            ? "Queue Closed"
-            : "Join Queue"}
-        </Text>
+       <Text style={styles.buttonText}>
+  {myEntry ? "✓ Already Joined" : "Join Queue"}
+</Text>
       </TouchableOpacity>
 
       {isOwner && (
