@@ -36,19 +36,18 @@ export default function QueueDetails() {
       .eq("id", id)
       .single();
 
-    if (!error && data) {
-      setQueue(data);
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user && data.owner_id === user.id) {
-        setIsOwner(true);
-      } else {
-        setIsOwner(false);
-      }
+    if (error) {
+      console.log(error);
+      return;
     }
+
+    setQueue(data);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    setIsOwner(user?.id === data.owner_id);
   }
 
   async function fetchMyQueueStatus() {
@@ -74,31 +73,36 @@ export default function QueueDetails() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      Alert.alert("Error", "Please login first.");
+      Alert.alert("Login Required");
       return;
     }
 
     if (myEntry) {
-      Alert.alert("Already Joined", "You are already in this queue.");
+      Alert.alert("Already Joined");
       return;
     }
 
     const { count } = await supabase
       .from("queue_members")
-      .select("*", { count: "exact", head: true })
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
       .eq("queue_id", id);
 
     const nextToken = (count ?? 0) + 1;
 
-    const { error } = await supabase.from("queue_members").insert({
-      queue_id: id,
-      user_id: user.id,
-      token_number: nextToken,
-      status: "waiting",
-    });
+    const { error } = await supabase
+      .from("queue_members")
+      .insert({
+        queue_id: id,
+        user_id: user.id,
+        token_number: nextToken,
+        status: "waiting",
+      });
 
     if (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert(error.message);
       return;
     }
 
@@ -109,16 +113,22 @@ export default function QueueDetails() {
       })
       .eq("id", id);
 
-    Alert.alert("Success", `Your Token Number is ${nextToken}`);
+    Alert.alert(
+      "Joined Successfully",
+      `Your Token Number is ${nextToken}`
+    );
 
     await loadData();
   }
+    async function nextToken() {
+    if (!isOwner) return;
 
-  async function nextToken() {
+    const next = queue.current_token + 1;
+
     const { error } = await supabase
       .from("queues")
       .update({
-        current_token: queue.current_token + 1,
+        current_token: next,
       })
       .eq("id", id);
 
@@ -127,64 +137,94 @@ export default function QueueDetails() {
       return;
     }
 
-    Alert.alert("Success", "Moved to next token.");
+    await supabase
+      .from("queue_members")
+      .update({
+        status: "completed",
+      })
+      .eq("queue_id", id)
+      .eq("token_number", next);
+
+    Alert.alert("Success", `Now Serving Token ${next}`);
+
     await loadData();
   }
 
   async function resetQueue() {
-    Alert.alert("Reset Queue", "Reset this queue?", [
-      { text: "Cancel" },
-      {
-        text: "Reset",
-        onPress: async () => {
-          await supabase
-            .from("queue_members")
-            .delete()
-            .eq("queue_id", id);
+    Alert.alert(
+      "Reset Queue",
+      "Are you sure you want to reset this queue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: async () => {
+            await supabase
+              .from("queue_members")
+              .delete()
+              .eq("queue_id", id);
 
-          await supabase
-            .from("queues")
-            .update({
-              current_token: 0,
-              total_people: 0,
-            })
-            .eq("id", id);
+            await supabase
+              .from("queues")
+              .update({
+                current_token: 0,
+                total_people: 0,
+              })
+              .eq("id", id);
 
-          setMyEntry(null);
-          await loadData();
+            setMyEntry(null);
+
+            Alert.alert("Queue Reset Successfully");
+
+            await loadData();
+          },
         },
-      },
-    ]);
+      ]
+    );
   }
 
   async function deleteQueue() {
-    Alert.alert("Delete Queue", "Delete this queue permanently?", [
-      { text: "Cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          const { error } = await supabase
-            .from("queues")
-            .delete()
-            .eq("id", id);
+    Alert.alert(
+      "Delete Queue",
+      "This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await supabase
+              .from("queue_members")
+              .delete()
+              .eq("queue_id", id);
 
-          if (error) {
-            Alert.alert("Error", error.message);
-            return;
-          }
+            const { error } = await supabase
+              .from("queues")
+              .delete()
+              .eq("id", id);
 
-          Alert.alert("Queue Deleted");
-          router.back();
+            if (error) {
+              Alert.alert("Error", error.message);
+              return;
+            }
+
+            Alert.alert("Queue Deleted");
+
+            router.back();
+          },
         },
-      },
-    ]);
+      ]
+    );
   }
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator
+          size="large"
+          color={Colors.primary}
+        />
       </View>
     );
   }
@@ -201,19 +241,57 @@ export default function QueueDetails() {
     <View style={styles.container}>
       <Text style={styles.title}>{queue.name}</Text>
 
-      <Text style={styles.info}>📍 {queue.location}</Text>
-      <Text style={styles.info}>🏷 {queue.category}</Text>
-      <Text style={styles.info}>🎫 Current Token: {queue.current_token}</Text>
-      <Text style={styles.info}>👥 People: {queue.total_people}</Text>
+      <Text style={styles.info}>
+        📍 {queue.location}
+      </Text>
+
+      <Text style={styles.info}>
+        🏷 {queue.category}
+      </Text>
+
+      <Text style={styles.info}>
+        🎫 Current Token : {queue.current_token}
+      </Text>
+
+      <Text style={styles.info}>
+        👥 Total People : {queue.total_people}
+      </Text>
+
+      <Text style={styles.info}>
+        📊 Progress :
+        {" "}
+        {queue.current_token}/{queue.total_people}
+      </Text>
 
       {myEntry && (
         <View style={styles.statusCard}>
-          <Text style={styles.statusTitle}>🎟 My Queue Status</Text>
-          <Text style={styles.statusText}>Token: {myEntry.token_number}</Text>
-          <Text style={styles.statusText}>Status: {myEntry.status}</Text>
+          <Text style={styles.statusTitle}>
+            🎟 My Queue Status
+          </Text>
+
           <Text style={styles.statusText}>
-            People Ahead:{" "}
-            {Math.max(myEntry.token_number - queue.current_token, 0)}
+            Your Token : {myEntry.token_number}
+          </Text>
+
+          <Text style={styles.statusText}>
+            Status :
+            {" "}
+            {myEntry.token_number === queue.current_token + 1
+              ? "🟢 Your Turn Next"
+              : myEntry.status === "completed"
+              ? "✅ Completed"
+              : "🟡 Waiting"}
+          </Text>
+
+          <Text style={styles.statusText}>
+            People Ahead :
+            {" "}
+            {Math.max(
+              myEntry.token_number -
+                queue.current_token -
+                1,
+              0
+            )}
           </Text>
         </View>
       )}
@@ -221,47 +299,85 @@ export default function QueueDetails() {
       <TouchableOpacity
         style={[
           styles.button,
-          myEntry && { backgroundColor: "#16a34a" },
+          myEntry && {
+            backgroundColor: "#16a34a",
+          },
         ]}
         onPress={joinQueue}
-        disabled={!!myEntry}
+        disabled={
+          !!myEntry ||
+          queue.current_token >=
+            queue.total_people
+        }
       >
         <Text style={styles.buttonText}>
-          {myEntry ? "✓ Already Joined" : "Join Queue"}
+          {myEntry
+            ? "✓ Already Joined"
+            : queue.current_token >=
+              queue.total_people
+            ? "Queue Closed"
+            : "Join Queue"}
         </Text>
       </TouchableOpacity>
 
       {isOwner && (
         <>
-          <Text style={styles.ownerTitle}>👑 Owner Panel</Text>
+          <View style={styles.ownerCard}>
+            <Text style={styles.ownerTitle}>
+              👑 Owner Controls
+            </Text>
+          </View>
 
-          <TouchableOpacity style={styles.button} onPress={nextToken}>
-            <Text style={styles.buttonText}>Next Token</Text>
+          <TouchableOpacity
+            style={[
+              styles.button,
+              {
+                backgroundColor: "#2563EB",
+              },
+            ]}
+            onPress={nextToken}
+          >
+            <Text style={styles.buttonText}>
+              ▶ Next Token
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: "#f59e0b" }]}
+            style={[
+              styles.button,
+              {
+                backgroundColor: "#F59E0B",
+              },
+            ]}
             onPress={resetQueue}
           >
-            <Text style={styles.buttonText}>Reset Queue</Text>
+            <Text style={styles.buttonText}>
+              🔄 Reset Queue
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.button, { backgroundColor: "#dc2626" }]}
+            style={[
+              styles.button,
+              {
+                backgroundColor: "#DC2626",
+              },
+            ]}
             onPress={deleteQueue}
           >
-            <Text style={styles.buttonText}>Delete Queue</Text>
+            <Text style={styles.buttonText}>
+              🗑 Delete Queue
+            </Text>
           </TouchableOpacity>
         </>
       )}
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#F8FAFC",
     padding: 24,
     justifyContent: "center",
   },
@@ -275,51 +391,65 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 30,
     fontWeight: "800",
-    marginBottom: 30,
     color: Colors.primary,
+    marginBottom: 28,
   },
 
   info: {
-    fontSize: 18,
+    fontSize: 17,
+    color: "#475569",
     marginBottom: 10,
   },
 
   statusCard: {
-    backgroundColor: "#eef6ff",
+    backgroundColor: "#EFF6FF",
     padding: 18,
-    borderRadius: 15,
+    borderRadius: 18,
     marginVertical: 20,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
   },
 
   statusTitle: {
     fontSize: 20,
     fontWeight: "700",
-    marginBottom: 10,
+    marginBottom: 12,
+    color: "#1E3A8A",
   },
 
   statusText: {
     fontSize: 16,
-    marginBottom: 5,
+    color: "#334155",
+    marginBottom: 6,
+  },
+
+  ownerCard: {
+    backgroundColor: "#FEF3C7",
+    padding: 16,
+    borderRadius: 18,
+    marginTop: 25,
+    marginBottom: 10,
   },
 
   ownerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
-    marginTop: 30,
-    marginBottom: 15,
+    color: "#92400E",
+    textAlign: "center",
   },
 
   button: {
     backgroundColor: Colors.primary,
-    padding: 18,
-    borderRadius: 14,
+    height: 58,
+    borderRadius: 16,
+    justifyContent: "center",
     alignItems: "center",
     marginTop: 15,
   },
 
   buttonText: {
     color: "#fff",
+    fontSize: 17,
     fontWeight: "700",
-    fontSize: 18,
   },
 });
