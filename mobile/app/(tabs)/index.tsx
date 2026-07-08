@@ -26,6 +26,8 @@ type Queue = {
 export default function HomeScreen() {
   const [queues, setQueues] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
 
   useFocusEffect(
     useCallback(() => {
@@ -44,12 +46,24 @@ export default function HomeScreen() {
     if (error) {
       console.log(error);
     } else {
-      console.log("Queues:", data);
       setQueues(data || []);
     }
 
     setLoading(false);
   }
+
+  const filteredQueues = queues.filter((queue) => {
+    const matchesSearch =
+      queue.name.toLowerCase().includes(search.toLowerCase()) ||
+      queue.location.toLowerCase().includes(search.toLowerCase()) ||
+      queue.category.toLowerCase().includes(search.toLowerCase());
+
+    const matchesCategory =
+      selectedCategory === "" ||
+      queue.category === selectedCategory;
+
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <ScrollView
@@ -65,31 +79,85 @@ export default function HomeScreen() {
         Skip long queues and save your valuable time.
       </Text>
 
-      <SearchBar />
+      <SearchBar
+        value={search}
+        onChangeText={setSearch}
+      />
 
       <Text style={styles.heading}>Categories</Text>
 
       <View style={styles.grid}>
-        <CategoryCard icon="medical" title="Hospital" />
-        <CategoryCard icon="business" title="Bank" />
-        <CategoryCard icon="restaurant" title="Restaurant" />
-        <CategoryCard icon="school" title="College" />
+        <TouchableOpacity
+          onPress={() => setSelectedCategory("Hospital")}
+        >
+          <CategoryCard
+            icon="medical"
+            title="Hospital"
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setSelectedCategory("Bank")}
+        >
+          <CategoryCard
+            icon="business"
+            title="Bank"
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setSelectedCategory("Restaurant")}
+        >
+          <CategoryCard
+            icon="restaurant"
+            title="Restaurant"
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setSelectedCategory("College")}
+        >
+          <CategoryCard
+            icon="school"
+            title="College"
+          />
+        </TouchableOpacity>
       </View>
 
-      <Text style={styles.heading}>Available Queues</Text>
+      <TouchableOpacity
+        onPress={() => setSelectedCategory("")}
+      >
+        <Text
+          style={{
+            color: Colors.primary,
+            fontWeight: "700",
+            marginBottom: 20,
+          }}
+        >
+          Show All
+        </Text>
+      </TouchableOpacity>
+
+      <Text style={styles.heading}>
+        Available Queues
+      </Text>
 
       {loading ? (
         <Text>Loading...</Text>
-      ) : queues.length === 0 ? (
-        <Text>No queues available.</Text>
+      ) : filteredQueues.length === 0 ? (
+        <Text>No queues found.</Text>
       ) : (
-        queues.map((queue) => (
+        filteredQueues.map((queue) => (
           <TouchableOpacity
             key={queue.id}
             style={styles.queueCard}
-            onPress={() => router.push(`/queue/${queue.id}`)}
+            onPress={() =>
+              router.push(`/queue/${queue.id}`)
+            }
           >
-            <Text style={styles.queueName}>{queue.name}</Text>
+            <Text style={styles.queueName}>
+              {queue.name}
+            </Text>
 
             <Text style={styles.queueInfo}>
               📍 {queue.location}
@@ -120,7 +188,9 @@ export default function HomeScreen() {
           size={22}
           color="white"
         />
-        <Text style={styles.buttonText}>Join Queue</Text>
+        <Text style={styles.buttonText}>
+          Join Queue
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );

@@ -2,14 +2,28 @@ import { View, TextInput, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 
-export default function SearchBar() {
+type SearchBarProps = {
+  value: string;
+  onChangeText: (text: string) => void;
+};
+
+export default function SearchBar({
+  value,
+  onChangeText,
+}: SearchBarProps) {
   return (
     <View style={styles.container}>
-      <Ionicons name="search" size={22} color="#888" />
+      <Ionicons
+        name="search"
+        size={22}
+        color="#888"
+      />
 
       <TextInput
         placeholder="Search queues..."
         placeholderTextColor="#888"
+        value={value}
+        onChangeText={onChangeText}
         style={styles.input}
       />
     </View>
