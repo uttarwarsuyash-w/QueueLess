@@ -55,7 +55,7 @@ export default function QueueDetails() {
     .subscribe();
 
   return () => {
-    supabase.removeChannel(queueChannel);
+    supabase.removeChannel( queueChannel);
     supabase.removeChannel(memberChannel);
   };
 }, []);
@@ -253,15 +253,19 @@ async function resetQueue() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await supabase
-              .from("queue_members")
-              .delete()
-              .eq("queue_id", id);
+            const { error: memberError } = await supabase
+  .from("queue_members")
+  .delete()
+  .eq("queue_id", id);
 
-            const { error } = await supabase
-              .from("queues")
-              .delete()
-              .eq("id", id);
+console.log("Member Delete:", memberError);
+
+const { error } = await supabase
+  .from("queues")
+  .delete()
+  .eq("id", id);
+
+console.log("Queue Delete:", error);
 
             if (error) {
               Alert.alert("Error", error.message);
@@ -369,7 +373,19 @@ async function resetQueue() {
   {myEntry ? "✓ Already Joined" : "Join Queue"}
 </Text>
       </TouchableOpacity>
-
+      <TouchableOpacity
+  style={[
+    styles.button,
+    {
+      backgroundColor: "#7C3AED",
+    },
+  ]}
+  onPress={() => router.push(`/queue/members/${id}`)}
+>
+  <Text style={styles.buttonText}>
+    👥 View Members
+  </Text>
+</TouchableOpacity>  
       {isOwner && (
         <>
           <View style={styles.ownerCard}>

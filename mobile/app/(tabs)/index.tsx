@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { router } from "expo-router";
+import { useState, useCallback } from "react";
+import { router, useFocusEffect } from "expo-router";
 import {
   View,
   Text,
@@ -27,11 +27,15 @@ export default function HomeScreen() {
   const [queues, setQueues] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchQueues();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchQueues();
+    }, [])
+  );
 
   async function fetchQueues() {
+    setLoading(true);
+
     const { data, error } = await supabase
       .from("queues")
       .select("*")
@@ -40,6 +44,7 @@ export default function HomeScreen() {
     if (error) {
       console.log(error);
     } else {
+      console.log("Queues:", data);
       setQueues(data || []);
     }
 
@@ -110,7 +115,11 @@ export default function HomeScreen() {
       )}
 
       <TouchableOpacity style={styles.button}>
-        <Ionicons name="add-circle-outline" size={22} color="white" />
+        <Ionicons
+          name="add-circle-outline"
+          size={22}
+          color="white"
+        />
         <Text style={styles.buttonText}>Join Queue</Text>
       </TouchableOpacity>
     </ScrollView>
